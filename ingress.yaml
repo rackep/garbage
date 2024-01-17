@@ -1,0 +1,161 @@
+# # kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.1.0/deploy/static/provider/aws/deploy.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx
+  namespace: test
+  labels:
+    app.kubernetes.io/name: nginx
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nginx
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nginx
+    spec:
+      terminationGracePeriodSeconds: 0
+      containers:
+      - name: nginx
+        env:
+        - name: TITLE
+          value: "AKS Ingress Demo"
+        image: mcr.microsoft.com/azuredocs/aks-helloworld:v1 # nginx
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: app-port
+          containerPort: 80
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "250m"
+          limits:
+            memory: "128Mi"
+            cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+  namespace: test
+  labels:
+    app.kubernetes.io/name: nginx
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: nginx
+  ports:
+  - name: svc-port
+    port: 80
+    targetPort: app-port
+    protocol: TCP
+
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: httpd
+  namespace: test
+  labels:
+    app.kubernetes.io/name: httpd
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: httpd
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: httpd
+    spec:
+      containers:
+      - name: frontend
+        image: micic/vortexwest:frontend
+        ports:
+        - name: app-port
+          containerPort: 80
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "250m"
+          limits:
+            memory: "128Mi"
+            cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: httpd
+  namespace: test
+  labels:
+    app.kubernetes.io/name: httpd
+spec:
+  # type: ClusterIP
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: httpd
+  ports:
+  - name: svc-port
+    port: 80
+    nodePort: 32000
+    targetPort: app-port
+    protocol: TCP
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: path-ingress
+  namespace: test
+  annotations:
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
+    # nginx.ingress.kubernetes.io/rewrite-target: /$1?Content-Type=text/javascript
+    nginx.ingress.kubernetes.io/enable-rewrite-log: "true"
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    # kubernetes.io/ingress.class: "nginx"
+# nginx.ingress.kubernetes.io/configuration-snippet: |
+#   more_set_headers "X-Content-Type-Options: nosniff";
+spec:
+  ingressClassName: "nginx"
+  # defaultBackend:
+  #   service:
+  #     name: httpd
+  #     port:
+  #       number: 80
+  rules:
+  - host: "178.148.56.64.nip.io"
+    http:
+      paths:
+      - path: /nginx($|/.*)
+        pathType: Prefix # Prefix
+        backend:
+          service:
+            name: nginx
+            port:
+              number: 80
+      - path: /httpd($|/.*) # path: /httpd($|/.*) # sa /$1
+        pathType: Prefix # ImplementationSpecific
+        backend:
+          service:
+            name: httpd
+            port:
+              number: 80
+      - path: /(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: httpd
+            port:
+              number: 80
+
+
+
+# /backend(/|$)(.*) sa /$2
+# /nginx($|/.*) sa /$1
